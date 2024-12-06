@@ -111,36 +111,9 @@ public class SmartWord {
 		);
 	}
 
-	public void feedback (boolean isCorrectGuess, String correctWord) {
-		if (!isCorrectGuess || correctWord == null || correctWord.isEmpty()) {
-			return;
+	public void feedback(boolean isCorrectGuess, String correctWord) {
+		if (isCorrectGuess && correctWord != null && !correctWord.isEmpty()) {
+			hasher.previousWord = correctWord; // Update the previous word
 		}
-	
-		double feedbackWeight = 3; // Base tunable weight
-		double decayFactor = 0.95; // Decay factor for other probabilities
-	
-		// Boost the probability of the correct word
-		double currentProb = hasher.getProbabilityMap().getOrDefault(correctWord, 0.01); // Default for unseen words
-		double adjustedProb = currentProb + (currentProb * feedbackWeight);
-		hasher.probabilityMap.put(correctWord, adjustedProb);
-	
-		// Apply decay to other probabilities
-		for (String word : hasher.getProbabilityMap().keySet()) {
-			if (!word.equals(correctWord)) {
-				double otherProb = hasher.getProbabilityMap().get(word);
-				hasher.probabilityMap.put(word, otherProb * decayFactor);
-			}
-		}
-	
-		// Update bigram probabilities if applicable
-		String previousWord = hasher.previousWord; // Assume `Hasher` has a `previousWord` field
-		if (previousWord != null) {
-			String bigramKey = previousWord + " " + correctWord;
-			double bigramProb = hasher.bigramProbabilities.getOrDefault(bigramKey, 0.01);
-			hasher.bigramProbabilities.put(bigramKey, bigramProb + feedbackWeight);
-		}
-	
-		// Update the previous word for context
-		hasher.previousWord = correctWord;
 	}
 }

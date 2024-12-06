@@ -141,35 +141,6 @@ public class Trie {
         return current.pathEnd;
     }
 
-    /**
-     * Print the trie.
-     */
-    public void print () {
-        System.out.println("Print Trie:");
-        printNode(root, new StringBuilder());
-    }
-
-    /**
-     * Recursively print a trie node.
-     * @param node              current node
-     * @param currentString     current string
-     */
-    private void printNode (
-        TrieNode node,
-        StringBuilder currentString
-    ) {
-        if (node.pathEnd) {
-            System.out.println(currentString.toString());
-        }
-        for (Map.Entry<Character, TrieNode> entry : node.getChildren().entrySet()) {
-            currentString.append(entry.getKey());
-            printNode(entry.getValue(), currentString);
-            if (currentString.length() > 0) {
-                currentString.deleteCharAt(currentString.length() - 1);
-            }
-        }
-    }
-
     public ArrayList<String> toStringArrayList () {
         accessNode(root, new StringBuilder());
         return accessibleVocab;

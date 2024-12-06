@@ -44,29 +44,28 @@ public class Hasher {
      * @param wordPos   input relative word position from 'guess()'
      * @return          HashMap of words and adjusted probabilities
      */
-    public HashMap<String, Double> relevantHash (char letter, int charPos, int wordPos) {
+    public HashMap<String, Double> relevantHash(char letter, int charPos, int wordPos, String previousWord) {
         HashMap<String, Double> hashed = new HashMap<>();
-        List<String> relevants = new ArrayList<>(vocabTrie.find(letter, charPos));
-
-        if (DEBUG) {
-            System.out.println("probability map:");
-            for (Entry<String, Double> entry : probabilityMap.entrySet()) {
-                System.out.println("\tKey:" + entry.getKey() + "\tValue:" + entry.getValue());
+        List<String> relevants = vocabTrie.find(letter, charPos);
+    
+        for (String word : relevants) {
+            double baseProbability = probabilityMap.getOrDefault(word, 0.01);
+            double trigramBoost = 1.0;
+    
+            if (previousWord != null) {
+                String bigramKey = previousWord + " " + word;
+                trigramBoost += bigramProbabilities.getOrDefault(bigramKey, 0.0);
             }
-        }
-
-        for (String temp : relevants) {
-            double delta = relativePos(wordPos, temp);
-            if (delta == 1.0) { // Skip words with no correspondence
-                continue;
-            }
-
-            final double deltaWeight = 0.01; // Tunable parameter for scaling delta
-            double adjustedProbability = probabilityMap.get(temp) * (1 - (deltaWeight * delta));
-
-            hashed.put(temp, adjustedProbability);
+    
+            double adjustedProbability = baseProbability * trigramBoost;
+            hashed.put(word, adjustedProbability);
         }
         return hashed;
+    }
+
+    public void addTrigram(String firstWord, String secondWord, String thirdWord) {
+        String trigramKey = firstWord + " " + secondWord + " " + thirdWord;
+        bigramProbabilities.merge(trigramKey, 0.01, Double::sum);
     }
 
     /**
@@ -143,7 +142,7 @@ public class Hasher {
      */
     public double relativePos (int wordPos, String target) {
         if (!correspondenceMatrix.containsKey(target)) {
-            return 1.0;
+            return 0;
         }
 
         double targetRelativePos = correspondenceMatrix.get(target);
