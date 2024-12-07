@@ -11,9 +11,14 @@ public class Hasher {
     private final boolean DEBUG = false;
 
     public String previousWord ;
-    public HashMap<String, Double> bigramProbabilities; // Bigram probabilities
-    public HashMap<String, Double> probabilityMap;
-    public HashMap<String, Double> correspondenceMatrix;
+
+    public HashMap<String, Double> 
+        bigramProbabilities, 
+        probabilityMap, 
+        correspondenceMatrix;
+
+    public HashMap<String, Integer> newMessageMap;
+
     Trie vocabTrie;
 
     // Constructor
@@ -22,19 +27,23 @@ public class Hasher {
         this.bigramProbabilities = new HashMap<>();
         this.probabilityMap = new HashMap<>();
         this.correspondenceMatrix = new HashMap<>();
+        this.newMessageMap = new HashMap<>();
         this.vocabTrie = new Trie();
     }
 
+    // Accessors
     /**
      * @return  probability map
      */
     public HashMap<String, Double> getProbabilityMap() {
-        if (DEBUG) {
-            System.out.println("probability map:");
-            System.out.println(probabilityMap);
-        }
-
         return probabilityMap;
+    }
+
+    public double getAvgProbability () {
+        return probabilityMap.values().stream()
+            .mapToDouble(Double::doubleValue)
+            .average()
+            .orElse(0.5);
     }
 
     /**
@@ -44,28 +53,30 @@ public class Hasher {
      * @param wordPos   input relative word position from 'guess()'
      * @return          HashMap of words and adjusted probabilities
      */
-    public HashMap<String, Double> relevantHash(char letter, int charPos, int wordPos, String previousWord) {
+    public HashMap<String, Double> relevantHash (char letter, int charPos, int wordPos) {
+
         HashMap<String, Double> hashed = new HashMap<>();
-        List<String> relevants = vocabTrie.find(letter, charPos);
-    
-        for (String word : relevants) {
-            double baseProbability = probabilityMap.getOrDefault(word, 0.01);
-            double trigramBoost = 1.0;
-    
-            if (previousWord != null) {
-                String bigramKey = previousWord + " " + word;
-                trigramBoost += bigramProbabilities.getOrDefault(bigramKey, 0.0);
+
+        List<String> relevants = new ArrayList<>(vocabTrie.find(letter, charPos));
+
+        if (DEBUG) {
+            System.out.println("probability map:");
+            for (Entry<String, Double> entry : probabilityMap.entrySet()) {
+                System.out.println("\tKey:" + entry.getKey() + "\tValue:" + entry.getValue());
             }
-    
-            double adjustedProbability = baseProbability * trigramBoost;
-            hashed.put(word, adjustedProbability);
+        }
+
+        for (String temp : relevants) {
+            double delta = relativePos(wordPos, temp);
+            if (delta == 1.0) {
+                continue;
+            }
+
+            final double deltaWeight = 0.01; // Tunable parameter for scaling delta
+            double adjustedProbability = probabilityMap.get(temp) * (1 - (deltaWeight * delta));
+            hashed.put(temp, adjustedProbability);
         }
         return hashed;
-    }
-
-    public void addTrigram(String firstWord, String secondWord, String thirdWord) {
-        String trigramKey = firstWord + " " + secondWord + " " + thirdWord;
-        bigramProbabilities.merge(trigramKey, 0.01, Double::sum);
     }
 
     /**
@@ -73,17 +84,20 @@ public class Hasher {
      * @param word      individual word from the 'old messages' file
      * @param ratio     (occurrences):(total word count)
      */
-    public void addProbability(String word, double ratio) {
+    public void addProbability (String word, double ratio) {
         probabilityMap.put(word, ratio);
 
-        if (DEBUG) {
-            System.out.println("Attempt to insert probability<Word, Ratio>:");
-            System.out.println("\tWORD:" + word + "\tRATIO:" + ratio);
-            if (probabilityMap.containsKey(word)) {
-                System.out.println("SUCCESS.");
-            }
-        }
+        // if (DEBUG) {
+        //     System.out.println("Attempt to insert probability<Word, Ratio>:");
+        //     System.out.println("\tWORD:" + word + "\tRATIO:" + ratio);
+        //     if (probabilityMap.containsKey(word)) {
+        //         System.out.println("SUCCESS.");
+        //     }
+        // }
+    }
 
+    public void addNewMessage (String newWord, int count) {
+        newMessageMap.put(newWord, count);
     }
 
     /**
@@ -91,6 +105,10 @@ public class Hasher {
      * @param trie  input vocab trie
      */
     public void addVocabTrie(Trie trie) {
+        if (DEBUG) {
+            System.out.println("Adding vocabTrie.");
+            System.out.println("EMPTY:" + trie.isEmpty());
+        }
         vocabTrie = trie;
     }
 
@@ -113,24 +131,58 @@ public class Hasher {
      * Update probabilities based on word occurrences in old messages.
      * @param words list of words from old messages
      */
-    public void hashOldMessages (ArrayList<String> words) {
-        int totalWordCount = words.size();
+    public void hashOldMessages (ArrayList<String> words, double totalWordCount) {
 
         for (String temp : vocabTrie.toStringArrayList()) {
-            int occurrences = 0;
+            double occurrences = 0;
             for (String tempWord : words) {
                 if (tempWord.equals(temp)) {
                     occurrences++;
                 }
             }
 
-            double occurrencesDouble = occurrences;
-            double wordCountDouble = totalWordCount;
             double ratio = 0;
             if (occurrences > 0) {
-                ratio = (occurrencesDouble / wordCountDouble);
+                ratio = (occurrences / totalWordCount);
             }
             addProbability(temp, ratio);
+        }
+    }
+
+    /**
+     * 
+     * @param newWord
+     * @param isCorrectGuess
+     */
+    public void hashNewMessage (String newWord, boolean isCorrectGuess) {
+        if (newMessageMap.containsKey(newWord)) {
+            newMessageMap.compute(newWord, (_, value) -> value++);
+
+            // Tunable bonus & penalty parameters
+            double bonus = 1.0001;
+            double penalty = 0.9999;
+
+            if (isCorrectGuess) {
+                probabilityMap.compute(
+                    newWord,
+                    (_, probability) -> probability * (bonus + (1 / (bonus + (newMessageMap.get(newWord)))))
+                );
+                newMessageMap.compute(newWord, (_, count) -> count * 0);
+            } else {
+                probabilityMap.compute(
+                    newWord, 
+                    (_, probability) -> probability * (penalty / newMessageMap.get(newWord))
+                );
+            }
+
+        } else {
+            addNewMessage(newWord, 1);
+        }
+    }
+
+    public void computeNewProbabilities (String[] guesses, boolean isCorrectGuess) {
+        for (String temp : guesses) {
+            hashNewMessage(temp, isCorrectGuess);
         }
     }
 
@@ -142,11 +194,14 @@ public class Hasher {
      */
     public double relativePos (int wordPos, String target) {
         if (!correspondenceMatrix.containsKey(target)) {
-            return 0;
+            return 0.5;
         }
 
+        double deltaRoundPlace = 1000;
         double targetRelativePos = correspondenceMatrix.get(target);
-        double displacement = Math.abs(targetRelativePos - wordPos);
+        double displacement = Math.round(
+            Math.abs(targetRelativePos - wordPos) * deltaRoundPlace
+            ) / deltaRoundPlace;
 
         return displacement;
     }

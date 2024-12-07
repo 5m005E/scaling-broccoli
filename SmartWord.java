@@ -10,40 +10,40 @@ import statsPackage.PredictiveEngine;
 import triePackage.Trie;
 
 public class SmartWord {
-
-	final int NUM_GUESSES = 3;
-	String[] guesses = new String[NUM_GUESSES];
 	Hasher hasher;
+	PredictiveEngine predictiveEngine;
 	String wordFile;
 	Trie vocabTrie;
-	int totalVocab;
-	int inWordCount;
+	int totalVocab, inWordCount;
 	ArrayList<String> oldMessages;
 
+	double totalWordCount = 0;
+
 	public SmartWord (String wordFile) throws FileNotFoundException {
-		this.hasher = new Hasher();
-		this.wordFile = wordFile;
 		this.vocabTrie = new Trie();
+		this.hasher = new Hasher();
+		this.predictiveEngine = new PredictiveEngine(hasher, vocabTrie);
+		this.wordFile = wordFile;
 		this.totalVocab = 0;
 		this.inWordCount = 0;
 		this.oldMessages = new ArrayList<>();
 	}
 
 	public void processOldMessages (String oldMessageFile) throws FileNotFoundException {
-		processVocab(); // Process vocabulary before parsing old messages
+		processVocab();
 	
 		try (BufferedReader tempBR = new BufferedReader(new FileReader(new File(oldMessageFile)))) {
 			String line;
 			while ((line = tempBR.readLine()) != null) {
-				line = line.toLowerCase(); // Convert line to lowercase
+				line = line.toLowerCase();
 				String[] lineArr = line.split(" ");
 				int lineLength = lineArr.length - 1;
 	
 				for (int i = 0; i < lineArr.length; i++) {
 					String temp = lineArr[i];
-					String cleanTemp = cleanString(temp); // Clean the word using StringBuilder
+					String cleanTemp = cleanString(temp);
 	
-					if (!cleanTemp.isEmpty()) { // Only process non-empty words
+					if (!cleanTemp.isEmpty()) {
 						oldMessages.add(cleanTemp);
 	
 						hasher.addCorrespondence(cleanTemp, i, lineLength);
@@ -53,8 +53,9 @@ public class SmartWord {
 						}
 					}
 				}
+				totalWordCount++;
 			}
-			hasher.hashOldMessages(oldMessages); // Finalize probabilities
+			hasher.hashOldMessages(oldMessages, totalWordCount);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -66,10 +67,10 @@ public class SmartWord {
 	 * @param word The input word to be cleaned.
 	 * @return A cleaned word containing only alphabetic characters.
 	 */
-	private String cleanString(String word) {
+	private String cleanString (String word) {
 		StringBuilder stringConstruct = new StringBuilder();
 		for (char tempChar : word.toCharArray()) {
-			if (Character.isLetter(tempChar)) { // Check if the character is alphabetic
+			if (Character.isLetter(tempChar)) {
 				stringConstruct.append(tempChar);
 			}
 		}
@@ -82,6 +83,7 @@ public class SmartWord {
 			while ((line = tempBR.readLine()) != null) {
 				vocabTrie.insert(line.toCharArray());
 			}
+
 			hasher.addVocabTrie(vocabTrie);
 
 		} catch (FileNotFoundException e) {
@@ -103,17 +105,29 @@ public class SmartWord {
 	int letterPosition,
 	int wordPosition
 	) {
-		return (
-			new PredictiveEngine(
-			hasher,
-			vocabTrie
-			).exValKeys(letter, letterPosition, wordPosition)
+
+		String[] guesses = predictiveEngine.exValKeys(
+			letter,
+			letterPosition,
+			wordPosition
 		);
+
+		hasher.computeNewProbabilities(guesses, false);
+
+		return guesses;
 	}
 
-	public void feedback(boolean isCorrectGuess, String correctWord) {
+	public void feedback (boolean isCorrectGuess, String correctWord) {
 		if (isCorrectGuess && correctWord != null && !correctWord.isEmpty()) {
-			hasher.previousWord = correctWord; // Update the previous word
+			hasher.previousWord = correctWord;
 		}
+
+		if (hasher.probabilityMap.containsKey(correctWord)) {
+			hasher.hashNewMessage(correctWord, true);
+		} else {
+			hasher.addProbability(correctWord, hasher.getAvgProbability());
+		}
+
+
 	}
 }

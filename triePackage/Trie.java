@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 
 public class Trie {
+    private final boolean DEBUG = false;
+
     private final TrieNode root;
     public ArrayList<String> resultant;
     private ArrayList<String> accessibleVocab;
@@ -38,6 +40,11 @@ public class Trie {
         this.resultant = new ArrayList<>();
         StringBuilder currentString = new StringBuilder();
         collect(currentString, root, 0, targetChar, targetPos);
+
+        if (DEBUG) {
+            System.out.println(resultant);
+        }
+
         return resultant;
     }
 
